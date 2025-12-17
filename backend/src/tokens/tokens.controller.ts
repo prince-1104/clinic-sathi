@@ -76,7 +76,7 @@ export class TokensController {
             id: null,
             name: 'General Practitioner',
             specialty: 'General',
-            status: generalStatus || DoctorStatusType.OUT,
+            status: String(generalStatus || DoctorStatusType.OUT), // Explicitly convert to string
             waitingCount: 0,
           },
         ],
@@ -116,13 +116,15 @@ export class TokensController {
         }
         
         const queue = await this.tokensService.getQueue(tenant.id, spec.id);
-        return {
+        const doctorEntry = {
           id: spec.id,
           name: spec.name,
           specialty: spec.specialty,
-          status,
+          status: String(status), // Explicitly convert to string to ensure JSON serialization works
           waitingCount: queue.length,
         };
+        console.log(`Doctor entry for ${spec.name}: status=${status}, stringified=${String(status)}`);
+        return doctorEntry;
       }),
     );
 
