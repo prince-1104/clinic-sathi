@@ -22,6 +22,9 @@ export class Tenant {
   @Column({ type: 'decimal', nullable: true })
   geoLng?: number;
 
+  @Column({ type: 'decimal', nullable: true })
+  locationRadiusMeters?: number; // Allowed radius in meters for location validation
+
   @Column({ default: true })
   qrActive: boolean;
 

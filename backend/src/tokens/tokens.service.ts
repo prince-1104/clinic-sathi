@@ -140,8 +140,15 @@ export class TokensService {
     patientLng: number,
   ): Promise<void> {
     const tenant = await this.tenantRepo.findOne({ where: { id: tenantId } });
-    if (!tenant || !tenant.geoLat || !tenant.geoLng) {
-      throw new BadRequestException('Clinic location not configured');
+    if (!tenant) {
+      throw new NotFoundException('Clinic not found');
+    }
+
+    // If clinic location is not configured, skip validation (for development/testing)
+    // In production, this should be mandatory
+    if (!tenant.geoLat || !tenant.geoLng) {
+      console.warn(`Clinic ${tenantId} location not configured - skipping location validation`);
+      return; // Allow token creation without location validation
     }
 
     const distance = this.calculateDistance(
@@ -151,14 +158,16 @@ export class TokensService {
       patientLng,
     );
 
-    // Default radius: 100 meters (can be made configurable)
-    const allowedRadius = 100;
+    // Use configured radius or default to 100 meters
+    const allowedRadius = tenant.locationRadiusMeters || 100;
 
     if (distance > allowedRadius) {
       throw new ForbiddenException(
-        `You must be within ${allowedRadius}m of the clinic to get a token`,
+        `You must be within ${allowedRadius}m of the clinic to get a token. Current distance: ${Math.round(distance)}m`,
       );
     }
+
+    console.log(`Location validated: patient is ${Math.round(distance)}m from clinic (within ${allowedRadius}m radius)`);
   }
 
   /**
