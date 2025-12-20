@@ -7,7 +7,9 @@ import {
   Body,
   UseGuards,
   Req,
+  BadRequestException,
 } from '@nestjs/common';
+import { z } from 'zod';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { TokensService } from './tokens.service';
 import { TokenStatus } from './token.entity';
@@ -15,22 +17,10 @@ import { TenantsService } from '../tenants/tenants.service';
 import { SpecialistsService } from '../specialists/specialists.service';
 import { DoctorStatusService } from '../doctor-status/doctor-status.service';
 import { DoctorStatusType } from '../doctor-status/doctor-status.entity';
-
-interface CreateTokenDto {
-  specialistId?: string;
-  patient: {
-    name: string;
-    dob: string;
-    phone: string;
-    address?: string;
-    email?: string;
-    gender?: string;
-  };
-  location: {
-    lat: number;
-    lng: number;
-  };
-}
+import {
+  createTokenDtoSchema,
+  type CreateTokenDto,
+} from './tokens.validation';
 
 @Controller()
 export class TokensController {
@@ -143,15 +133,32 @@ export class TokensController {
   @Post('public/:clinicSlug/tokens')
   async createPublicToken(
     @Param('clinicSlug') clinicSlug: string,
-    @Body() dto: CreateTokenDto,
+    @Body() dto: any, // Use any to validate with Zod
   ) {
+    // Validate DTO with Zod
+    const validationResult = createTokenDtoSchema.safeParse(dto);
+    
+    if (!validationResult.success) {
+      const errors = validationResult.error.issues.map((err: z.ZodIssue) => ({
+        field: err.path.join('.'),
+        message: err.message,
+      }));
+      
+      throw new BadRequestException({
+        error: 'Validation failed',
+        details: errors,
+      });
+    }
+
     const tenant = await this.tenantsService.findBySlug(clinicSlug);
     if (!tenant) {
       return { error: 'Clinic not found' };
     }
 
     try {
-      const token = await this.tokensService.createToken(tenant.id, dto);
+      // Use validated data
+      const validatedDto: CreateTokenDto = validationResult.data;
+      const token = await this.tokensService.createToken(tenant.id, validatedDto);
       const queue = await this.tokensService.getQueue(tenant.id, token.specialistId);
       const position = queue.findIndex((t) => t.id === token.id) + 1;
 

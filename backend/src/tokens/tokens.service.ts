@@ -15,22 +15,7 @@ import { SpecialistsService } from '../specialists/specialists.service';
 import { DoctorStatusService } from '../doctor-status/doctor-status.service';
 import { DoctorStatusType } from '../doctor-status/doctor-status.entity';
 import { randomBytes } from 'crypto';
-
-interface CreateTokenDto {
-  specialistId?: string;
-  patient: {
-    name: string;
-    dob: string; // YYYY-MM-DD
-    phone: string;
-    address?: string;
-    email?: string;
-    gender?: string;
-  };
-  location: {
-    lat: number;
-    lng: number;
-  };
-}
+import { type CreateTokenDto } from './tokens.validation';
 
 @Injectable()
 export class TokensService {
