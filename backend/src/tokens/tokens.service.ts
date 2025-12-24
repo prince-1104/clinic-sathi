@@ -15,7 +15,7 @@ import { SpecialistsService } from '../specialists/specialists.service';
 import { DoctorStatusService } from '../doctor-status/doctor-status.service';
 import { DoctorStatusType } from '../doctor-status/doctor-status.entity';
 import { randomBytes } from 'crypto';
-import { type CreateTokenDto } from './tokens.validation';
+import { type CreateTokenDto, type AutoCreateTokenDto } from './tokens.validation';
 
 @Injectable()
 export class TokensService {
@@ -269,6 +269,118 @@ export class TokensService {
       createdLat: dto.location.lat,
       createdLng: dto.location.lng,
       expiresAt: new Date(today.getTime() + 24 * 60 * 60 * 1000), // 24 hours
+    });
+
+    const savedToken = await this.tokenRepo.save(token);
+
+    // Create appointment
+    const appointment = this.appointmentRepo.create({
+      tenantId,
+      patientId: patient.id,
+      specialistId: specialist.id,
+      tokenId: savedToken.id,
+      visitDate: today,
+      status: AppointmentStatus.WAITING,
+    });
+    await this.appointmentRepo.save(appointment);
+
+    return savedToken;
+  }
+
+  /**
+   * Auto-create a token with minimal patient data (for QR scan)
+   */
+  async autoCreateToken(tenantId: string, dto: AutoCreateTokenDto): Promise<Token> {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    // Get or create specialist
+    let specialist: Specialist | null = null;
+    if (dto.specialistId) {
+      specialist = await this.specialistRepo.findOne({
+        where: { id: dto.specialistId, tenantId },
+      });
+      if (!specialist) {
+        throw new NotFoundException('Specialist not found');
+      }
+    } else {
+      // Get first active specialist or create default
+      const specialists = await this.specialistsService.findByTenant(tenantId);
+      if (specialists.length === 0) {
+        // Create default specialist
+        specialist = this.specialistRepo.create({
+          tenantId,
+          name: 'General Practitioner',
+          specialty: 'General',
+          isActive: true,
+        });
+        specialist = await this.specialistRepo.save(specialist);
+      } else {
+        specialist = specialists[0];
+      }
+    }
+
+    if (!specialist) {
+      throw new NotFoundException('Unable to find or create specialist');
+    }
+
+    // Validate clinic status
+    await this.validateClinicStatus(tenantId, specialist.id);
+
+    // Use provided location or skip validation (for QR scan convenience)
+    let location: { lat: number; lng: number } | null = null;
+    if (dto.location) {
+      // Validate location if provided
+      await this.validateLocation(tenantId, dto.location.lat, dto.location.lng);
+      location = dto.location;
+    } else {
+      // Try to get tenant location as fallback, or use default
+      const tenant = await this.tenantRepo.findOne({ where: { id: tenantId } });
+      if (tenant?.geoLat && tenant?.geoLng) {
+        location = { lat: tenant.geoLat, lng: tenant.geoLng };
+      }
+    }
+
+    // Check token limit
+    await this.checkTokenLimit(tenantId, specialist.id, today);
+
+    // Find or create patient with minimal data
+    let patient = await this.patientRepo.findOne({
+      where: {
+        tenantId,
+        phone: dto.patient.phone,
+      },
+    });
+
+    if (!patient) {
+      // Use provided DOB or default to today's date (will be updated later if needed)
+      const dob = dto.patient.dob ? new Date(dto.patient.dob) : new Date('2000-01-01');
+      
+      patient = this.patientRepo.create({
+        tenantId,
+        name: dto.patient.name,
+        dob: dob,
+        phone: dto.patient.phone,
+      });
+      patient = await this.patientRepo.save(patient);
+    }
+
+    // Generate token
+    const tokenNumber = await this.getNextTokenNumber(tenantId, today, specialist.id);
+    const publicId = this.generatePublicId();
+
+    const token = this.tokenRepo.create({
+      tenantId,
+      publicId,
+      date: today,
+      tokenNumber,
+      specialistId: specialist.id,
+      patientId: patient.id,
+      status: TokenStatus.WAITING,
+      createdLat: location?.lat,
+      createdLng: location?.lng,
+      expiresAt: new Date(today.getTime() + 24 * 60 * 60 * 1000), // 24 hours
+      source: 'QR_SCAN',
     });
 
     const savedToken = await this.tokenRepo.save(token);

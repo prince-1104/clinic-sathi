@@ -238,10 +238,10 @@ export default function PatientEntryPage({ params }: PatientEntryPageProps) {
     );
   }
 
-  // Generate the full URL for the QR code
+  // Generate the full URL for the QR code - points to scan route for auto-token creation
   const qrCodeUrl = typeof window !== "undefined" 
-    ? `${window.location.origin}/p/${clinicSlug}`
-    : `/p/${clinicSlug}`;
+    ? `${window.location.origin}/p/${clinicSlug}/scan`
+    : `/p/${clinicSlug}/scan`;
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-gradient-to-br from-blue-900 via-indigo-900 to-slate-900 px-4 py-12">

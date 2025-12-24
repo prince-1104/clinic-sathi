@@ -19,7 +19,9 @@ import { DoctorStatusService } from '../doctor-status/doctor-status.service';
 import { DoctorStatusType } from '../doctor-status/doctor-status.entity';
 import {
   createTokenDtoSchema,
+  autoCreateTokenDtoSchema,
   type CreateTokenDto,
+  type AutoCreateTokenDto,
 } from './tokens.validation';
 
 @Controller()
@@ -159,6 +161,56 @@ export class TokensController {
       // Use validated data
       const validatedDto: CreateTokenDto = validationResult.data;
       const token = await this.tokensService.createToken(tenant.id, validatedDto);
+      const queue = await this.tokensService.getQueue(tenant.id, token.specialistId);
+      const position = queue.findIndex((t) => t.id === token.id) + 1;
+
+      return {
+        tokenPublicId: token.publicId,
+        tokenNumber: token.tokenNumber,
+        status: token.status,
+        positionInQueue: position,
+        specialist: {
+          id: token.specialistId,
+          name: token.specialist?.name || 'Unknown',
+        },
+      };
+    } catch (error) {
+      return {
+        error: error.message || 'Failed to create token',
+      };
+    }
+  }
+
+  // Public: Auto-create token (for QR scan)
+  @Post('public/:clinicSlug/tokens/auto-create')
+  async autoCreatePublicToken(
+    @Param('clinicSlug') clinicSlug: string,
+    @Body() dto: any, // Use any to validate with Zod
+  ) {
+    // Validate DTO with Zod
+    const validationResult = autoCreateTokenDtoSchema.safeParse(dto);
+    
+    if (!validationResult.success) {
+      const errors = validationResult.error.issues.map((err: z.ZodIssue) => ({
+        field: err.path.join('.'),
+        message: err.message,
+      }));
+      
+      throw new BadRequestException({
+        error: 'Validation failed',
+        details: errors,
+      });
+    }
+
+    const tenant = await this.tenantsService.findBySlug(clinicSlug);
+    if (!tenant) {
+      return { error: 'Clinic not found' };
+    }
+
+    try {
+      // Use validated data
+      const validatedDto: AutoCreateTokenDto = validationResult.data;
+      const token = await this.tokensService.autoCreateToken(tenant.id, validatedDto);
       const queue = await this.tokensService.getQueue(tenant.id, token.specialistId);
       const position = queue.findIndex((t) => t.id === token.id) + 1;
 

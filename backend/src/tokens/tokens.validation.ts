@@ -63,6 +63,26 @@ export const locationSchema = z.object({
     .max(180, 'Longitude must be between -180 and 180'),
 });
 
+// Minimal patient schema for auto-creation (QR scan)
+export const minimalPatientSchema = z.object({
+  name: z
+    .string()
+    .min(2, 'Name must be at least 2 characters')
+    .max(100, 'Name must be less than 100 characters')
+    .trim(),
+  phone: z
+    .string()
+    .regex(/^[0-9]{10}$/, 'Phone number must be exactly 10 digits')
+    .refine(
+      (phone) => {
+        const digits = phone.split('');
+        return !digits.every((d) => d === digits[0]);
+      },
+      'Phone number cannot be all the same digit',
+    ),
+  dob: z.string().optional(), // Optional for auto-creation
+});
+
 // Token creation DTO validation schema
 export const createTokenDtoSchema = z.object({
   specialistId: z.string().uuid('Invalid specialist ID format').optional(),
@@ -70,5 +90,13 @@ export const createTokenDtoSchema = z.object({
   location: locationSchema,
 });
 
+// Auto-create token DTO (for QR scan - minimal data)
+export const autoCreateTokenDtoSchema = z.object({
+  specialistId: z.string().uuid('Invalid specialist ID format').optional(),
+  patient: minimalPatientSchema,
+  location: locationSchema.optional(), // Optional - will use default if not provided
+});
+
 export type CreateTokenDto = z.infer<typeof createTokenDtoSchema>;
+export type AutoCreateTokenDto = z.infer<typeof autoCreateTokenDtoSchema>;
 
